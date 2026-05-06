@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -716,12 +717,7 @@ function calculate(){
   if(has.kefir)   addF(FOODS.kefir,300);
   if(has.frijoles)addF(FOODS.frijoles,150);
   if(has.verduras)addF(FOODS.verduras,300);
-  if(has.fruta)   addF(FOODS.fruta,150);
-  if(has.vino)   {uK+=125;uC+=4;}
-  if(has.mezcal) {uK+=64;}
-  // Aguacate starts at 100g default; slider adjustable — stored in portions
-  var agG=has.aguacate?100:0;
-  if(has.aguacate)addF(FOODS.aguacate,agG);
+  // fruta, aguacate, vino, mezcal: NOT added to uK — handled via portions in calcTotals
   var remP=protTarget-uP, portions={};
   if(primProts.length>0&&remP>0){
     var per=remP/primProts.length;
@@ -729,7 +725,10 @@ function calculate(){
   } else {
     primProts.forEach(function(pk){portions[pk]=FOODS[pk].minG;});
   }
-  if(has.aguacate) portions['aguacate']=agG;
+  if(has.aguacate) portions['aguacate']=100;
+  if(has.fruta)    portions['fruta']=150;
+  if(has.vino)     portions['vino']=1;
+  if(has.mezcal)   portions['mezcal']=1;
   lastCalc={p:p,tmb:tmb,tdee:Math.round(tdee),targetKcal:targetKcal,protTarget:protTarget,
     primProts:primProts,has:has,uK:uK,uP:uP,uF:uF,uC:uC,portions:portions,
     actKcal:actKcal,deficit:Math.round(deficit),fastMode:fastMode};
@@ -737,18 +736,34 @@ function calculate(){
 }
 
 function calcTotals(lc){
-  // Recomputes totals from current portions (primary proteins + aguacate)
-  var pK=0,pP=0,pF=0;
-  lc.primProts.forEach(function(pk){var f=FOODS[pk],s=lc.portions[pk]/100;pK+=f.kcal*s;pP+=f.prot*s;pF+=f.fat*s;});
-  var agExtra=0;
-  if(lc.has.aguacate){var ag=FOODS.aguacate,ags=lc.portions['aguacate']/100;agExtra=ag.kcal*ags;}
-  // uK already includes the initial aguacate 100g — so subtract initial and add current
-  var agInit=lc.has.aguacate?(FOODS.aguacate.kcal*1):0; // 100g initial = kcal*1
-  var tK=Math.round(lc.uK - agInit + agExtra + pK);
-  var tP=Math.round(lc.uP+pP);
-  var tF=Math.round(lc.uF+pF+(lc.has.aguacate?(FOODS.aguacate.fat*lc.portions['aguacate']/100 - FOODS.aguacate.fat):0));
-  var tC=Math.round(lc.uC+(lc.has.aguacate?(FOODS.aguacate.carb*lc.portions['aguacate']/100 - FOODS.aguacate.carb):0));
-  return {tK:tK,tP:tP,tF:tF,tC:tC};
+  // Base fixed foods (kefir, frijoles, verduras, whey) — already in uK/uP/uF/uC
+  var tK=lc.uK, tP=lc.uP, tF=lc.uF, tC=lc.uC;
+  // Primary proteins — variable via sliders
+  lc.primProts.forEach(function(pk){
+    var f=FOODS[pk], s=lc.portions[pk]/100;
+    tK+=f.kcal*s; tP+=f.prot*s; tF+=f.fat*s; tC+=f.carb*s;
+  });
+  // Aguacate — variable via slider
+  if(lc.has.aguacate){
+    var fa=FOODS.aguacate, sa=lc.portions['aguacate']/100;
+    tK+=fa.kcal*sa; tP+=fa.prot*sa; tF+=fa.fat*sa; tC+=fa.carb*sa;
+  }
+  // Fruta — variable via slider (g)
+  if(lc.has.fruta){
+    var ff=FOODS.fruta, sf=lc.portions['fruta']/100;
+    tK+=ff.kcal*sf; tP+=ff.prot*sf; tF+=ff.fat*sf; tC+=ff.carb*sf;
+  }
+  // Vino — slider: number of copas (0,1,2)
+  if(lc.has.vino){
+    var nV=lc.portions['vino']||0;
+    tK+=125*nV; tC+=4*nV; tP+=0.1*nV;
+  }
+  // Mezcal — slider: number of oz (0,1,2,3)
+  if(lc.has.mezcal){
+    var nM=lc.portions['mezcal']||0;
+    tK+=64*nM;
+  }
+  return {tK:Math.round(tK),tP:Math.round(tP),tF:Math.round(tF),tC:Math.round(tC)};
 }
 
 function buildPortionsList(lc){
@@ -780,9 +795,30 @@ function buildPortionsList(lc){
   if(lc.has.kefir)   afp('kefir',300);
   if(lc.has.frijoles)afp('frijoles',150);
   if(lc.has.verduras)afp('verduras',300);
-  if(lc.has.fruta)   afp('fruta',150);
-  if(lc.has.vino)    allP.push({emoji:'🍷',name:'Vino tinto',  displayAmt:'150 ml',kcal:125,protG:0,fatG:0,carbG:4, desc:FOODS.vino.desc});
-  if(lc.has.mezcal)  allP.push({emoji:'🥃',name:'Mezcal',      displayAmt:'30 ml', kcal:64, protG:0,fatG:0,carbG:0, desc:FOODS.mezcal.desc});
+  // Fruta — slider adjustable, live ID
+  if(lc.has.fruta){
+    var fFr=FOODS.fruta, gFr=lc.portions['fruta'], sFr=gFr/100;
+    allP.push({key:'fruta',emoji:fFr.emoji,name:fFr.name,
+      liveId:'por-fruta',
+      displayAmt:gFr+'g',kcal:Math.round(fFr.kcal*sFr),
+      protG:Math.round(fFr.prot*sFr),fatG:Math.round(fFr.fat*sFr),carbG:Math.round(fFr.carb*sFr),desc:fFr.desc});
+  }
+  // Vino — slider adjustable (copas), live ID
+  if(lc.has.vino){
+    var nV=lc.portions['vino']||0;
+    allP.push({key:'vino',emoji:'🍷',name:'Vino tinto',
+      liveId:'por-vino',
+      displayAmt:nV+' copa'+(nV!==1?'s':'')+' ('+nV*150+' ml)',
+      kcal:Math.round(125*nV),protG:Math.round(0.1*nV),fatG:0,carbG:Math.round(4*nV),desc:FOODS.vino.desc});
+  }
+  // Mezcal — slider adjustable (oz), live ID
+  if(lc.has.mezcal){
+    var nMz=lc.portions['mezcal']||0;
+    allP.push({key:'mezcal',emoji:'🥃',name:'Mezcal',
+      liveId:'por-mezcal',
+      displayAmt:nMz+' oz ('+nMz*30+' ml)',
+      kcal:Math.round(64*nMz),protG:0,fatG:0,carbG:0,desc:FOODS.mezcal.desc});
+  }
   return allP;
 }
 
@@ -822,23 +858,48 @@ function renderAll(){
   var FNAMES={'none':'Sin ayuno','16:8':'Ayuno 16:8','18:6':'Ayuno 18:6','20:4':'Ayuno 20:4','omad':'OMAD'};
   var diff=tK-lc.targetKcal, bOk=diff<=50, bTxt=diff>0?('+'+diff+' kcal sobre meta'):(Math.abs(diff)+' kcal bajo meta ✓');
 
-  // Sliders: primary proteins + aguacate
+  // Sliders: primary proteins + aguacate + fruta + vino + mezcal
   var sliderItems='';
-  var sliderKeys=lc.primProts.slice(); // copy
+  var sliderKeys=lc.primProts.slice();
   if(lc.has.aguacate) sliderKeys.push('aguacate');
+  if(lc.has.fruta)    sliderKeys.push('fruta');
+  if(lc.has.vino)     sliderKeys.push('vino');
+  if(lc.has.mezcal)   sliderKeys.push('mezcal');
   if(sliderKeys.length>0){
     sliderItems=sliderKeys.map(function(pk){
-      var f=FOODS[pk],g=lc.portions[pk],s=g/100;
-      var isAg=pk==='aguacate';
-      var colorStyle=isAg?'style="color:var(--fat)"':'';
-      return '<div class="si"><div class="si-hdr"><span class="si-emoji">'+f.emoji+'</span><span class="si-name" '+colorStyle+'>'+f.name+'</span><span class="si-grams" id="sg-'+pk+'">'+(isAg?g+'g':fmtG(pk,g))+'</span></div>'+
-        '<div class="si-macs" id="sm-'+pk+'">'+
-          (isAg?'':'<span class="spm p">🟢 '+Math.round(f.prot*s)+'g prot</span>')+
-          '<span class="spm f">🟡 '+Math.round(f.fat*s)+'g grasa</span>'+
-          '<span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span></div>'+
-        '<div class="slr-row"><span>'+f.minG+'g</span>'+
-          '<input type="range" min="'+f.minG+'" max="'+f.maxG+'" step="5" value="'+g+'" oninput="onSlider(\''+pk+'\',this.value)">'+
-          '<span>'+f.maxG+'g</span></div>'+
+      var f=FOODS[pk], g=lc.portions[pk], s=g/100;
+      var isAg=pk==='aguacate', isFr=pk==='fruta';
+      var isVino=pk==='vino', isMezcal=pk==='mezcal';
+      var isGrams=!isVino&&!isMezcal;
+      // Label color hint for non-protein items
+      var nameStyle=isAg?'style="color:var(--fat)"':isFr?'style="color:var(--carb)"':(isVino||isMezcal)?'style="color:var(--warn)"':'';
+      // Current display
+      var dispAmt, macroHTML;
+      if(isVino){
+        dispAmt=g+' copa'+(g!==1?'s':'');
+        macroHTML='<span class="spm" style="color:var(--warn)">'+Math.round(125*g)+' kcal</span><span class="spm c">🔵 '+Math.round(4*g)+'g carb</span>';
+      } else if(isMezcal){
+        dispAmt=g+' oz';
+        macroHTML='<span class="spm" style="color:var(--warn)">'+Math.round(64*g)+' kcal</span>';
+      } else {
+        dispAmt=isAg?g+'g':fmtG(pk,g);
+        macroHTML=(isAg||isFr?'':'<span class="spm p">🟢 '+Math.round(f.prot*s)+'g prot</span>')+
+          (isAg?'<span class="spm f">🟡 '+Math.round(f.fat*s)+'g grasa</span>':'');
+        if(isFr) macroHTML='<span class="spm c">🔵 '+Math.round(f.carb*s)+'g carb</span>';
+        macroHTML+='<span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span>';
+      }
+      // Slider range
+      var sMin, sMax, sStep, sUnit;
+      if(isVino)   { sMin=0; sMax=2; sStep=1; sUnit='copa(s)'; }
+      else if(isMezcal){ sMin=0; sMax=3; sStep=1; sUnit='oz'; }
+      else         { sMin=f.minG; sMax=f.maxG; sStep=5; sUnit='g'; }
+
+      return '<div class="si">'+
+        '<div class="si-hdr"><span class="si-emoji">'+f.emoji+'</span><span class="si-name" '+nameStyle+'>'+f.name+'</span><span class="si-grams" id="sg-'+pk+'">'+dispAmt+'</span></div>'+
+        '<div class="si-macs" id="sm-'+pk+'">'+macroHTML+'</div>'+
+        '<div class="slr-row"><span>'+sMin+sUnit[0]+'</span>'+
+          '<input type="range" min="'+sMin+'" max="'+sMax+'" step="'+sStep+'" value="'+g+'" oninput="onSlider(\''+pk+'\',this.value)">'+
+          '<span>'+sMax+sUnit[0]+'</span></div>'+
         (pk==='huevo'?'<div style="font-size:.63rem;color:var(--muted);margin-top:2px" id="sd-huevo">'+Math.round(g/60)+' huevos aprox</div>':'')+
       '</div>';
     }).join('');
@@ -975,18 +1036,31 @@ function onSlider(pk,val){
   if(!lastCalc)return;
   lastCalc.portions[pk]=parseInt(val);
   var lc=lastCalc;
-  var f=FOODS[pk], g=lc.portions[pk], s=g/100;
-  var isAg=pk==='aguacate';
+  var f=FOODS[pk], g=lc.portions[pk];
+  var isAg=pk==='aguacate', isFr=pk==='fruta';
+  var isVino=pk==='vino', isMezcal=pk==='mezcal';
+  var isGrams=!isVino&&!isMezcal;
+  var s=isGrams?g/100:0;
 
-  // Update slider header (grams label)
+  // Update slider header
   var sg=document.getElementById('sg-'+pk);
-  if(sg)sg.textContent=isAg?g+'g':fmtG(pk,g);
+  if(sg){
+    if(isVino)   sg.textContent=g+' copa'+(g!==1?'s':'');
+    else if(isMezcal) sg.textContent=g+' oz';
+    else if(isAg||isFr) sg.textContent=g+'g';
+    else sg.textContent=fmtG(pk,g);
+  }
+
   // Update slider macros
   var sm=document.getElementById('sm-'+pk);
-  if(sm)sm.innerHTML=
-    (isAg?'':'<span class="spm p">🟢 '+Math.round(f.prot*s)+'g prot</span>')+
-    '<span class="spm f">🟡 '+Math.round(f.fat*s)+'g grasa</span>'+
-    '<span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span>';
+  if(sm){
+    if(isVino)   sm.innerHTML='<span class="spm" style="color:var(--warn)">'+Math.round(125*g)+' kcal</span><span class="spm c">🔵 '+Math.round(4*g)+'g carb</span>';
+    else if(isMezcal) sm.innerHTML='<span class="spm" style="color:var(--warn)">'+Math.round(64*g)+' kcal</span>';
+    else if(isFr) sm.innerHTML='<span class="spm c">🔵 '+Math.round(f.carb*s)+'g carb</span><span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span>';
+    else if(isAg) sm.innerHTML='<span class="spm f">🟡 '+Math.round(f.fat*s)+'g grasa</span><span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span>';
+    else sm.innerHTML='<span class="spm p">🟢 '+Math.round(f.prot*s)+'g prot</span><span class="spm f">🟡 '+Math.round(f.fat*s)+'g grasa</span><span class="spm" style="color:var(--muted)">'+Math.round(f.kcal*s)+' kcal</span>';
+  }
+
   // Egg count hint
   if(pk==='huevo'){var sd=document.getElementById('sd-huevo');if(sd)sd.textContent=Math.round(g/60)+' huevos aprox';}
 
@@ -994,14 +1068,22 @@ function onSlider(pk,val){
   var liveId='por-'+pk;
   var porEl=document.getElementById(liveId);
   if(porEl){
-    // Rebuild just that row's inner content
-    var newDisplayAmt=isAg?g+'g':fmtG(pk,g);
-    var newProt=Math.round(f.prot*s), newFat=Math.round(f.fat*s), newCarb=Math.round(f.carb*s), newKcal=Math.round(f.kcal*s);
+    var newDisplay, newProt, newFat, newCarb, newKcal;
+    if(isVino){
+      newDisplay=g+' copa'+(g!==1?'s':'')+' ('+g*150+' ml)';
+      newKcal=Math.round(125*g); newProt=Math.round(0.1*g); newFat=0; newCarb=Math.round(4*g);
+    } else if(isMezcal){
+      newDisplay=g+' oz ('+g*30+' ml)';
+      newKcal=Math.round(64*g); newProt=0; newFat=0; newCarb=0;
+    } else {
+      newDisplay=isAg?g+'g':fmtG(pk,g);
+      newKcal=Math.round(f.kcal*s); newProt=Math.round(f.prot*s); newFat=Math.round(f.fat*s); newCarb=Math.round(f.carb*s);
+    }
     porEl.innerHTML=
       '<div class="por-emoji">'+f.emoji+'</div>'+
       '<div class="por-detail">'+
         '<div class="por-name">'+f.name+'</div>'+
-        '<div class="por-amt">'+newDisplayAmt+'</div>'+
+        '<div class="por-amt">'+newDisplay+'</div>'+
         '<div class="por-macs">'+
           '<span class="pm p">🟢 '+newProt+'g</span>'+
           '<span class="pm f">🟡 '+newFat+'g</span>'+
@@ -1021,7 +1103,7 @@ function onSlider(pk,val){
   var bv=document.getElementById('budgetVal');
   if(bv){bv.className='budget-val '+(bOk?'b-ok':'b-over');bv.textContent=tK+' / '+lc.targetKcal+' kcal ('+bTxt+')';}
 
-  // Kcal ring number
+  // Kcal ring
   var kn=document.getElementById('kcalNum');if(kn)kn.textContent=tK;
 
   // Macro bars
